@@ -111,6 +111,19 @@ export class GlobalExceptionFilter implements ExceptionFilter {
       }
     }
 
+    if (
+      exception instanceof Prisma.PrismaClientUnknownRequestError &&
+      (exception.message.includes('40P01') ||
+        exception.message.includes('40001') ||
+        exception.message.includes('deadlock detected'))
+    ) {
+      return {
+        statusCode: HttpStatus.CONFLICT,
+        message: 'Transaction conflict or deadlock detected, please retry',
+        error: 'Conflict',
+      };
+    }
+
     return {
       statusCode: HttpStatus.INTERNAL_SERVER_ERROR,
       message: 'Internal server error',

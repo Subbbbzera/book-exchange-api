@@ -309,27 +309,10 @@ export class ExchangeRequestsService {
         );
       }
 
-      // 1. Conditional update of the ExchangeRequest itself (PENDING -> ACCEPTED)
-      const requestUpdate = await tx.exchangeRequest.updateMany({
-        where: {
-          id: requestId,
-          status: ExchangeRequestStatus.PENDING,
-        },
-        data: {
-          status: ExchangeRequestStatus.ACCEPTED,
-          selectedOfferedBookId,
-        },
-      });
-
-      if (requestUpdate.count !== 1) {
-        throw new ConflictException(
-          'Exchange request is no longer in PENDING state',
-        );
-      }
-
-      // 2. Conditional update (CAS) on the requested book: only update if status is still AVAILABLE.
-      // If two requests for the same book are accepted concurrently, Postgres row-level write lock
-      // on updateMany ensures only one sees status = AVAILABLE (count = 1), while the second sees count = 0 -> 409 Conflict!
+      // 1. Conditional update (CAS) on the requested book FIRST: only update if status is still AVAILABLE.
+      // Because both competing requests target the same requestedBookId, updating the book first
+      // acquires the row-level write lock in a single consistent order (Book -> ExchangeRequest),
+      // completely preventing PostgreSQL deadlocks (40P01) while guaranteeing only one request sees count = 1.
       const requestedBookUpdate = await tx.book.updateMany({
         where: {
           id: request.requestedBookId,
@@ -346,7 +329,7 @@ export class ExchangeRequestsService {
         );
       }
 
-      // 3. Conditional update (CAS) on the selected offered book: only update if status is still AVAILABLE.
+      // 2. Conditional update (CAS) on the selected offered book: only update if status is still AVAILABLE.
       const offeredBookUpdate = await tx.book.updateMany({
         where: {
           id: selectedOfferedBookId,
@@ -360,6 +343,24 @@ export class ExchangeRequestsService {
       if (offeredBookUpdate.count !== 1) {
         throw new ConflictException(
           'Selected offered book is no longer available for exchange',
+        );
+      }
+
+      // 3. Conditional update of the ExchangeRequest itself (PENDING -> ACCEPTED)
+      const requestUpdate = await tx.exchangeRequest.updateMany({
+        where: {
+          id: requestId,
+          status: ExchangeRequestStatus.PENDING,
+        },
+        data: {
+          status: ExchangeRequestStatus.ACCEPTED,
+          selectedOfferedBookId,
+        },
+      });
+
+      if (requestUpdate.count !== 1) {
+        throw new ConflictException(
+          'Exchange request is no longer in PENDING state',
         );
       }
 
