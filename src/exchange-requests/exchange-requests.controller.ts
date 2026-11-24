@@ -21,10 +21,14 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
-import { PaginatedResponseDto } from '../common/dto/pagination.dto';
+import {
+  PaginatedResponseDto,
+  PaginationQueryDto,
+} from '../common/dto/pagination.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { AuthenticatedUser } from '../common/interfaces/authenticated-user.interface';
 import { CreateExchangeRequestDto } from './dto/create-exchange-request.dto';
+import { ExchangeHistoryResponseDto } from './dto/exchange-history-response.dto';
 import { ExchangeRequestResponseDto } from './dto/exchange-request-response.dto';
 import { ExchangeRequestsQueryDto } from './dto/exchange-requests-query.dto';
 import { UpdateExchangeRequestDto } from './dto/update-exchange-request.dto';
@@ -107,5 +111,18 @@ export class ExchangeRequestsController {
       requestId,
       dto,
     );
+  }
+
+  @Get('me/exchanges')
+  @ApiOperation({
+    summary:
+      'Get paginated history of completed book exchanges for current user',
+  })
+  @ApiOkResponse({ type: PaginatedResponseDto })
+  async getMyExchanges(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query() query: PaginationQueryDto,
+  ): Promise<PaginatedResponseDto<ExchangeHistoryResponseDto>> {
+    return this.exchangeRequestsService.getMyExchanges(user.id, query);
   }
 }

@@ -7,9 +7,16 @@ import {
 } from '@nestjs/common';
 import { BookStatus, ExchangeRequestStatus, Prisma } from '@prisma/client';
 import { BooksService } from '../books/books.service';
-import { PaginatedResponseDto } from '../common/dto/pagination.dto';
+import {
+  PaginatedResponseDto,
+  PaginationQueryDto,
+} from '../common/dto/pagination.dto';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateExchangeRequestDto } from './dto/create-exchange-request.dto';
+import {
+  ExchangeHistoryResponseDto,
+  ExchangeHistoryWithRelations,
+} from './dto/exchange-history-response.dto';
 import {
   ExchangeRequestResponseDto,
   ExchangeRequestWithRelations,
@@ -42,6 +49,27 @@ const EXCHANGE_REQUEST_INCLUDE = {
     },
   },
 } satisfies Prisma.ExchangeRequestInclude;
+
+const EXCHANGE_HISTORY_INCLUDE = {
+  sender: {
+    select: {
+      id: true,
+      name: true,
+      email: true,
+      phone: true,
+    },
+  },
+  owner: {
+    select: {
+      id: true,
+      name: true,
+      email: true,
+      phone: true,
+    },
+  },
+  requestedBook: true,
+  offeredBook: true,
+} satisfies Prisma.ExchangeHistoryInclude;
 
 @Injectable()
 export class ExchangeRequestsService {
@@ -378,5 +406,35 @@ export class ExchangeRequestsService {
         updated as ExchangeRequestWithRelations,
       );
     });
+  }
+
+  async getMyExchanges(
+    userId: string,
+    query: PaginationQueryDto,
+  ): Promise<PaginatedResponseDto<ExchangeHistoryResponseDto>> {
+    const { page, limit } = query;
+    const skip = (page - 1) * limit;
+
+    const where: Prisma.ExchangeHistoryWhereInput = {
+      OR: [{ senderId: userId }, { ownerId: userId }],
+    };
+
+    const [historyRecords, total] = await Promise.all([
+      this.prisma.exchangeHistory.findMany({
+        where,
+        include: EXCHANGE_HISTORY_INCLUDE,
+        orderBy: { exchangedAt: 'desc' },
+        skip,
+        take: limit,
+      }),
+      this.prisma.exchangeHistory.count({ where }),
+    ]);
+
+    const items = historyRecords.map(
+      (record) =>
+        new ExchangeHistoryResponseDto(record as ExchangeHistoryWithRelations),
+    );
+
+    return new PaginatedResponseDto(items, total, page, limit);
   }
 }
