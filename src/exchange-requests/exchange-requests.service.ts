@@ -11,6 +11,7 @@ import {
   PaginatedResponseDto,
   PaginationQueryDto,
 } from '../common/dto/pagination.dto';
+import { MailService } from '../mail/mail.module';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateExchangeRequestDto } from './dto/create-exchange-request.dto';
 import {
@@ -22,6 +23,11 @@ import {
   ExchangeRequestWithRelations,
 } from './dto/exchange-request-response.dto';
 import { ExchangeRequestsQueryDto } from './dto/exchange-requests-query.dto';
+import {
+  CreateReviewDto,
+  ReviewResponseDto,
+  ReviewWithRelations,
+} from './dto/review.dto';
 import { UpdateExchangeRequestDto } from './dto/update-exchange-request.dto';
 
 const EXCHANGE_REQUEST_INCLUDE = {
@@ -76,6 +82,7 @@ export class ExchangeRequestsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly booksService: BooksService,
+    private readonly mailService: MailService,
   ) {}
 
   async createExchangeRequest(
@@ -83,7 +90,7 @@ export class ExchangeRequestsService {
     requestedBookId: string,
     dto: CreateExchangeRequestDto,
   ): Promise<ExchangeRequestResponseDto> {
-    return this.prisma.$transaction(async (tx) => {
+    const created = await this.prisma.$transaction(async (tx) => {
       // Lock all involved book rows in deterministic order to prevent races with concurrent delete or exchange acceptance
       const allBookIds = [
         ...new Set([requestedBookId, ...dto.offeredBookIds]),
@@ -142,7 +149,7 @@ export class ExchangeRequestsService {
         );
       }
 
-      const created = await tx.exchangeRequest.create({
+      return tx.exchangeRequest.create({
         data: {
           message: dto.message,
           senderId,
@@ -155,11 +162,26 @@ export class ExchangeRequestsService {
         },
         include: EXCHANGE_REQUEST_INCLUDE,
       });
-
-      return new ExchangeRequestResponseDto(
-        created as ExchangeRequestWithRelations,
-      );
     });
+
+    // Send email notification to the book owner outside the DB transaction (with sender name, sender email, and list of offered books)
+    await this.mailService.sendExchangeRequestNotification({
+      ownerEmail: created.owner.email,
+      ownerName: created.owner.name,
+      senderName: created.sender.name,
+      senderEmail: created.sender.email,
+      requestedBookName: created.requestedBook.name,
+      message: created.message,
+      offeredBooks: created.offeredBooks.map((ob) => ({
+        name: ob.book.name,
+        author: ob.book.author,
+        condition: ob.book.condition,
+      })),
+    });
+
+    return new ExchangeRequestResponseDto(
+      created as ExchangeRequestWithRelations,
+    );
   }
 
   async getMyExchangeRequests(
@@ -436,6 +458,91 @@ export class ExchangeRequestsService {
         new ExchangeHistoryResponseDto(record as ExchangeHistoryWithRelations),
     );
 
+    return new PaginatedResponseDto(items, total, page, limit);
+  }
+
+  async createReview(
+    authorId: string,
+    exchangeHistoryId: string,
+    dto: CreateReviewDto,
+  ): Promise<ReviewResponseDto> {
+    const history = await this.prisma.exchangeHistory.findUnique({
+      where: { id: exchangeHistoryId },
+    });
+
+    if (!history) {
+      throw new NotFoundException('Completed exchange record not found');
+    }
+
+    if (history.senderId !== authorId && history.ownerId !== authorId) {
+      throw new ForbiddenException(
+        'Only participants of this completed exchange can leave a review',
+      );
+    }
+
+    const targetUserId =
+      history.senderId === authorId ? history.ownerId : history.senderId;
+
+    const existing = await this.prisma.review.findUnique({
+      where: {
+        exchangeHistoryId_authorId: {
+          exchangeHistoryId,
+          authorId,
+        },
+      },
+    });
+
+    if (existing) {
+      throw new ConflictException(
+        'You have already left a review for this exchange',
+      );
+    }
+
+    const review = await this.prisma.review.create({
+      data: {
+        exchangeHistoryId,
+        authorId,
+        targetUserId,
+        rating: dto.rating,
+        comment: dto.comment,
+      },
+      include: {
+        author: { select: { id: true, name: true } },
+        targetUser: { select: { id: true, name: true } },
+      },
+    });
+
+    return new ReviewResponseDto(review as ReviewWithRelations);
+  }
+
+  async getMyReviews(
+    userId: string,
+    query: PaginationQueryDto,
+  ): Promise<PaginatedResponseDto<ReviewResponseDto>> {
+    const { page, limit } = query;
+    const skip = (page - 1) * limit;
+
+    const where: Prisma.ReviewWhereInput = {
+      targetUserId: userId,
+    };
+
+    const [reviews, total] = await Promise.all([
+      this.prisma.review.findMany({
+        where,
+        include: {
+          author: { select: { id: true, name: true } },
+          targetUser: { select: { id: true, name: true } },
+        },
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: limit,
+      }),
+      this.prisma.review.count({ where }),
+    ]);
+
+    const items = reviews.map(
+      (r) => new ReviewResponseDto(r as ReviewWithRelations),
+    );
     return new PaginatedResponseDto(items, total, page, limit);
   }
 }

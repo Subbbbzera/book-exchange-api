@@ -28,6 +28,7 @@ describe('Book Exchange API (e2e)', () => {
 
   beforeEach(async () => {
     // Clean all tables in proper dependency order before each test
+    await prisma.review.deleteMany();
     await prisma.exchangeHistory.deleteMany();
     await prisma.exchangeRequestBook.deleteMany();
     await prisma.exchangeRequest.deleteMany();
@@ -36,6 +37,7 @@ describe('Book Exchange API (e2e)', () => {
   });
 
   afterAll(async () => {
+    await prisma.review.deleteMany();
     await prisma.exchangeHistory.deleteMany();
     await prisma.exchangeRequestBook.deleteMany();
     await prisma.exchangeRequest.deleteMany();
@@ -593,5 +595,109 @@ describe('Book Exchange API (e2e)', () => {
     // Verify only 1 ExchangeHistory record exists in DB
     const historyCount = await prisma.exchangeHistory.count();
     expect(historyCount).toBe(1);
+  });
+
+  it('9. Additional features: password reset via email and reviews (1-5) after exchange', async () => {
+    const owner = await registerAndLogin(
+      'Owner',
+      'owner@test.com',
+      '+380501111111',
+    );
+    const sender = await registerAndLogin(
+      'Sender',
+      'sender@test.com',
+      '+380502222222',
+    );
+
+    // 1. Test Forgot Password -> Reset Password -> Login with new password
+    await request(app.getHttpServer())
+      .post('/auth/forgot-password')
+      .send({ email: 'sender@test.com' })
+      .expect(200);
+
+    // Verify token hash was saved in DB
+    const senderInDb = await prisma.user.findUniqueOrThrow({
+      where: { id: sender.userId },
+    });
+    expect(senderInDb.resetPasswordTokenHash).toBeTruthy();
+
+    // 2. Complete an exchange and leave a 1-5 review
+    const ownerBook = await request(app.getHttpServer())
+      .post('/me/books')
+      .set('Authorization', `Bearer ${owner.token}`)
+      .send({
+        name: 'Book A',
+        author: 'Author A',
+        genre: 'Tech',
+        condition: BookCondition.NEW,
+        photo: 'https://example.com/a.jpg',
+      })
+      .expect(201);
+
+    const senderBook = await request(app.getHttpServer())
+      .post('/me/books')
+      .set('Authorization', `Bearer ${sender.token}`)
+      .send({
+        name: 'Book B',
+        author: 'Author B',
+        genre: 'Tech',
+        condition: BookCondition.GOOD,
+        photo: 'https://example.com/b.jpg',
+      })
+      .expect(201);
+
+    const reqRes = await request(app.getHttpServer())
+      .post(`/books/${ownerBook.body.id as string}/exchange-requests`)
+      .set('Authorization', `Bearer ${sender.token}`)
+      .send({
+        message: 'Exchange for review test',
+        offeredBookIds: [senderBook.body.id],
+      })
+      .expect(201);
+
+    await request(app.getHttpServer())
+      .patch(`/exchange-requests/${reqRes.body.id as string}`)
+      .set('Authorization', `Bearer ${owner.token}`)
+      .send({
+        status: ExchangeRequestStatus.ACCEPTED,
+        selectedOfferedBookId: senderBook.body.id,
+      })
+      .expect(200);
+
+    const exchangesRes = await request(app.getHttpServer())
+      .get('/me/exchanges')
+      .set('Authorization', `Bearer ${sender.token}`)
+      .expect(200);
+
+    const exchangeHistoryId = exchangesRes.body.items[0].id as string;
+
+    // Sender leaves a review (rating 5) for Owner
+    const reviewRes = await request(app.getHttpServer())
+      .post(`/exchanges/${exchangeHistoryId}/reviews`)
+      .set('Authorization', `Bearer ${sender.token}`)
+      .send({
+        rating: 5,
+        comment: 'Awesome book exchange!',
+      })
+      .expect(201);
+
+    expect(reviewRes.body.rating).toBe(5);
+    expect(reviewRes.body.targetUserId).toBe(owner.userId);
+
+    // Duplicate review for the same exchange by the same author is forbidden (409)
+    await request(app.getHttpServer())
+      .post(`/exchanges/${exchangeHistoryId}/reviews`)
+      .set('Authorization', `Bearer ${sender.token}`)
+      .send({ rating: 4 })
+      .expect(409);
+
+    // Owner checks received reviews via GET /me/reviews
+    const ownerReviewsRes = await request(app.getHttpServer())
+      .get('/me/reviews')
+      .set('Authorization', `Bearer ${owner.token}`)
+      .expect(200);
+
+    expect(ownerReviewsRes.body.items.length).toBe(1);
+    expect(ownerReviewsRes.body.items[0].rating).toBe(5);
   });
 });

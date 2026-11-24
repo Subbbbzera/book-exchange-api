@@ -31,6 +31,7 @@ import { CreateExchangeRequestDto } from './dto/create-exchange-request.dto';
 import { ExchangeHistoryResponseDto } from './dto/exchange-history-response.dto';
 import { ExchangeRequestResponseDto } from './dto/exchange-request-response.dto';
 import { ExchangeRequestsQueryDto } from './dto/exchange-requests-query.dto';
+import { CreateReviewDto, ReviewResponseDto } from './dto/review.dto';
 import { UpdateExchangeRequestDto } from './dto/update-exchange-request.dto';
 import { ExchangeRequestsService } from './exchange-requests.service';
 
@@ -124,5 +125,40 @@ export class ExchangeRequestsController {
     @Query() query: PaginationQueryDto,
   ): Promise<PaginatedResponseDto<ExchangeHistoryResponseDto>> {
     return this.exchangeRequestsService.getMyExchanges(user.id, query);
+  }
+
+  @Post('exchanges/:id/reviews')
+  @ApiOperation({
+    summary: 'Leave a review and rating (1-5) after a completed exchange',
+  })
+  @ApiCreatedResponse({ type: ReviewResponseDto })
+  @ApiForbiddenResponse({
+    description: 'Not a participant of this exchange',
+  })
+  @ApiConflictResponse({
+    description: 'Review already submitted for this exchange',
+  })
+  async createReview(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) exchangeHistoryId: string,
+    @Body() dto: CreateReviewDto,
+  ): Promise<ReviewResponseDto> {
+    return this.exchangeRequestsService.createReview(
+      user.id,
+      exchangeHistoryId,
+      dto,
+    );
+  }
+
+  @Get('me/reviews')
+  @ApiOperation({
+    summary: 'Get paginated list of reviews received by current user',
+  })
+  @ApiOkResponse({ type: PaginatedResponseDto })
+  async getMyReviews(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query() query: PaginationQueryDto,
+  ): Promise<PaginatedResponseDto<ReviewResponseDto>> {
+    return this.exchangeRequestsService.getMyReviews(user.id, query);
   }
 }

@@ -11,6 +11,7 @@ import { BooksModule } from './books/books.module';
 import { GlobalExceptionFilter } from './common/filters/global-exception.filter';
 import { validateEnv } from './config/env.validation';
 import { ExchangeRequestsModule } from './exchange-requests/exchange-requests.module';
+import { MailModule } from './mail/mail.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { UsersModule } from './users/users.module';
 
@@ -21,6 +22,7 @@ import { UsersModule } from './users/users.module';
       validate: validateEnv,
     }),
     PrismaModule,
+    MailModule,
     AuthModule,
     UsersModule,
     BooksModule,

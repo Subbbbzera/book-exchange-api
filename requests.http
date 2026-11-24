@@ -1,0 +1,377 @@
+@baseUrl = http://localhost:3000
+
+### ============================================================================
+### 1. AUTH (/auth) — Реєстрація та Логін двох користувачів (Alice і Bob) + Admin
+### ============================================================================
+
+### 1.1. Реєстрація Користувача 1 (Alice)
+# @name registerAlice
+POST {{baseUrl}}/auth/register
+Content-Type: application/json
+
+{
+  "name": "Alice Smith",
+  "email": "alice@example.com",
+  "phone": "+380501112233",
+  "password": "StrongPass123!"
+}
+
+### 1.2. Логін Користувача 1 (Alice)
+# @name loginAlice
+POST {{baseUrl}}/auth/login
+Content-Type: application/json
+
+{
+  "email": "alice@example.com",
+  "password": "StrongPass123!"
+}
+
+@aliceToken = {{loginAlice.response.body.accessToken}}
+@aliceId = {{loginAlice.response.body.user.id}}
+
+### 1.3. Перевірка поточного користувача (GET /auth/me)
+GET {{baseUrl}}/auth/me
+Authorization: Bearer {{aliceToken}}
+
+### 1.4. Реєстрація Користувача 2 (Bob)
+# @name registerBob
+POST {{baseUrl}}/auth/register
+Content-Type: application/json
+
+{
+  "name": "Bob Martin",
+  "email": "bob@example.com",
+  "phone": "+380502223344",
+  "password": "StrongPass123!"
+}
+
+### 1.5. Логін Користувача 2 (Bob)
+# @name loginBob
+POST {{baseUrl}}/auth/login
+Content-Type: application/json
+
+{
+  "email": "bob@example.com",
+  "password": "StrongPass123!"
+}
+
+@bobToken = {{loginBob.response.body.accessToken}}
+@bobId = {{loginBob.response.body.user.id}}
+
+### 1.6. Логін Адміністратора (створеного через npm run prisma:seed)
+# @name loginAdmin
+POST {{baseUrl}}/auth/login
+Content-Type: application/json
+
+{
+  "email": "admin@bookexchange.local",
+  "password": "AdminPassword123!"
+}
+
+@adminToken = {{loginAdmin.response.body.accessToken}}
+
+
+### ============================================================================
+### 2. ПРОФІЛЬ (/me)
+### ============================================================================
+
+### 2.1. Отримати профіль Alice (лічильники книг та вхідних PENDING запитів)
+GET {{baseUrl}}/me
+Authorization: Bearer {{aliceToken}}
+
+### 2.2. Оновити профіль Alice (ім'я, телефон, аватар)
+PATCH {{baseUrl}}/me
+Authorization: Bearer {{aliceToken}}
+Content-Type: application/json
+
+{
+  "name": "Alice Smith (Updated)",
+  "phone": "+380501119999",
+  "avatar": "https://example.com/alice-avatar.png"
+}
+
+
+### ============================================================================
+### 3. МОЇ КНИГИ (/me/books)
+### ============================================================================
+
+### 3.1. Alice додає Книгу №1 (яку вона потім обміняє)
+# @name createAliceBook1
+POST {{baseUrl}}/me/books
+Authorization: Bearer {{aliceToken}}
+Content-Type: application/json
+
+{
+  "name": "Clean Architecture",
+  "author": "Robert C. Martin",
+  "genre": "Programming",
+  "condition": "NEW",
+  "photo": "https://example.com/clean-architecture.jpg"
+}
+
+@aliceBook1Id = {{createAliceBook1.response.body.id}}
+
+### 3.2. Alice додає Книгу №2 (яку ми відредагуємо і видалимо)
+# @name createAliceBook2
+POST {{baseUrl}}/me/books
+Authorization: Bearer {{aliceToken}}
+Content-Type: application/json
+
+{
+  "name": "Temp Book To Delete",
+  "author": "Unknown Author",
+  "genre": "Fiction",
+  "condition": "WORN",
+  "photo": "https://example.com/temp.jpg"
+}
+
+@aliceBook2Id = {{createAliceBook2.response.body.id}}
+
+### 3.3. Alice переглядає список своїх книг (GET /me/books)
+GET {{baseUrl}}/me/books?page=1&limit=10
+Authorization: Bearer {{aliceToken}}
+
+### 3.4. Alice редагує свою Книгу №2 (PATCH /me/books/:id)
+PATCH {{baseUrl}}/me/books/{{aliceBook2Id}}
+Authorization: Bearer {{aliceToken}}
+Content-Type: application/json
+
+{
+  "name": "Updated Book Title",
+  "condition": "GOOD"
+}
+
+### 3.5. Alice видаляє свою Книгу №2, поки на неї немає запитів (DELETE /me/books/:id)
+DELETE {{baseUrl}}/me/books/{{aliceBook2Id}}
+Authorization: Bearer {{aliceToken}}
+
+### 3.6. Bob додає свою Книгу №1 (для пропозиції обміну)
+# @name createBobBook1
+POST {{baseUrl}}/me/books
+Authorization: Bearer {{bobToken}}
+Content-Type: application/json
+
+{
+  "name": "Refactoring",
+  "author": "Martin Fowler",
+  "genre": "Programming",
+  "condition": "GOOD",
+  "photo": "https://example.com/refactoring.jpg"
+}
+
+@bobBook1Id = {{createBobBook1.response.body.id}}
+
+### 3.7. Bob додає свою Книгу №2 (друга книга для вибору під час обміну)
+# @name createBobBook2
+POST {{baseUrl}}/me/books
+Authorization: Bearer {{bobToken}}
+Content-Type: application/json
+
+{
+  "name": "Domain-Driven Design",
+  "author": "Eric Evans",
+  "genre": "Programming",
+  "condition": "NEW",
+  "photo": "https://example.com/ddd.jpg"
+}
+
+@bobBook2Id = {{createBobBook2.response.body.id}}
+
+
+### ============================================================================
+### 4. КАТАЛОГ (/books) — Пошук, фільтри, сортування, деталі БЕЗ email/phone
+### ============================================================================
+
+### 4.1. Отримати каталог доступних книг (сортування за алфавітом, пагінація)
+GET {{baseUrl}}/books?page=1&limit=10&sortOrder=asc
+
+### 4.2. Пошук у каталозі за назвою або автором + фільтр за жанром і станом
+GET {{baseUrl}}/books?search=Martin&genre=Programming&condition=NEW&sortOrder=asc
+
+### 4.3. Деталі книги Alice (GET /books/:id) — видно ім'я власника БЕЗ email і телефону!
+GET {{baseUrl}}/books/{{aliceBook1Id}}
+
+
+### ============================================================================
+### 5. ОБМІН КНИГАМИ (/books/:id/exchange-requests, /me/exchange-requests, /me/exchanges)
+### ============================================================================
+
+### 5.1. [НЕГАТИВНИЙ ТЕСТ 400] Alice намагається запросити власну книгу
+POST {{baseUrl}}/books/{{aliceBook1Id}}/exchange-requests
+Authorization: Bearer {{aliceToken}}
+Content-Type: application/json
+
+{
+  "message": "Trying to request my own book",
+  "offeredBookIds": ["{{aliceBook1Id}}"]
+}
+
+### 5.2. [НЕГАТИВНИЙ ТЕСТ 403] Bob намагається запропонувати чужу книгу (книгу Alice)
+POST {{baseUrl}}/books/{{aliceBook1Id}}/exchange-requests
+Authorization: Bearer {{bobToken}}
+Content-Type: application/json
+
+{
+  "message": "Offering a book that is not mine",
+  "offeredBookIds": ["{{aliceBook1Id}}"]
+}
+
+### 5.3. Bob створює запит на обмін книги Alice, пропонуючи дві свої книги
+### Зверни увагу: у відповіді email та phone обох сторін = null (поки статус PENDING)
+# @name createExchangeReq
+POST {{baseUrl}}/books/{{aliceBook1Id}}/exchange-requests
+Authorization: Bearer {{bobToken}}
+Content-Type: application/json
+
+{
+  "message": "Привіт! Обміняю одну зі своїх книг на твою Clean Architecture.",
+  "offeredBookIds": ["{{bobBook1Id}}", "{{bobBook2Id}}"]
+}
+
+@exchangeRequestId = {{createExchangeReq.response.body.id}}
+
+### 5.4. [НЕГАТИВНИЙ ТЕСТ 409] Bob намагається створити дублікат активного запиту на ту саму книгу
+POST {{baseUrl}}/books/{{aliceBook1Id}}/exchange-requests
+Authorization: Bearer {{bobToken}}
+Content-Type: application/json
+
+{
+  "message": "Duplicate request",
+  "offeredBookIds": ["{{bobBook1Id}}"]
+}
+
+### 5.5. [НЕГАТИВНИЙ ТЕСТ 409] Alice намагається видалити свою книгу, на яку є активний запит
+DELETE {{baseUrl}}/me/books/{{aliceBook1Id}}
+Authorization: Bearer {{aliceToken}}
+
+### 5.6. Alice перевіряє свій профіль (pendingIncomingRequestsCount тепер = 1)
+GET {{baseUrl}}/me
+Authorization: Bearer {{aliceToken}}
+
+### 5.7. Alice переглядає вхідні запити на обмін зі статусом PENDING
+GET {{baseUrl}}/me/exchange-requests?direction=incoming&status=PENDING
+Authorization: Bearer {{aliceToken}}
+
+### 5.8. Alice ПРИЙМАЄ запит на обмін і обирає одну з запропонованих книг Боба (bobBook2Id)
+### Після прийняття:
+### - відкриваються контакти (email та phone) обох сторін!
+### - обидві книги стають EXCHANGED і зникають з каталогу /books
+### - створюється запис в історії обмінів
+PATCH {{baseUrl}}/exchange-requests/{{exchangeRequestId}}
+Authorization: Bearer {{aliceToken}}
+Content-Type: application/json
+
+{
+  "status": "ACCEPTED",
+  "selectedOfferedBookId": "{{bobBook2Id}}"
+}
+
+### 5.9. [НЕГАТИВНИЙ ТЕСТ 409] Спроба повторно змінити статус вже прийнятого запиту
+PATCH {{baseUrl}}/exchange-requests/{{exchangeRequestId}}
+Authorization: Bearer {{aliceToken}}
+Content-Type: application/json
+
+{
+  "status": "REJECTED"
+}
+
+### 5.10. Перевіряємо каталог (/books): обміняні книги зникли, залишилась лише bobBook1Id
+GET {{baseUrl}}/books
+
+### 5.11. Історія обмінів Alice (GET /me/exchanges) — видно обидві книги та контакти Боба
+# @name aliceExchanges
+GET {{baseUrl}}/me/exchanges?page=1&limit=10
+Authorization: Bearer {{aliceToken}}
+
+@exchangeHistoryId = {{aliceExchanges.response.body.items[0].id}}
+
+### 5.12. [ДОДАТКОВО] Bob залишає відгук і оцінку 1-5 після обміну (POST /exchanges/:id/reviews)
+POST {{baseUrl}}/exchanges/{{exchangeHistoryId}}/reviews
+Authorization: Bearer {{bobToken}}
+Content-Type: application/json
+
+{
+  "rating": 5,
+  "comment": "Книга в ідеальному стані, швидко домовились про обмін!"
+}
+
+### 5.13. [ДОДАТКОВО] Alice переглядає отримані відгуки (GET /me/reviews)
+GET {{baseUrl}}/me/reviews?page=1&limit=10
+Authorization: Bearer {{aliceToken}}
+
+### 5.14. [ДОДАТКОВО] Запит на відновлення пароля через email (POST /auth/forgot-password)
+POST {{baseUrl}}/auth/forgot-password
+Content-Type: application/json
+
+{
+  "email": "alice@example.com"
+}
+
+
+### ============================================================================
+### 6. АДМІН-РОЗДІЛ (/admin) — Роль ADMIN
+### ============================================================================
+
+### 6.1. [НЕГАТИВНИЙ ТЕСТ 403] Звичайний USER (Alice) намагається викликати /admin/users
+GET {{baseUrl}}/admin/users
+Authorization: Bearer {{aliceToken}}
+
+### 6.2. ADMIN отримує список користувачів із пошуком та пагінацією
+GET {{baseUrl}}/admin/users?page=1&limit=10&search=example.com
+Authorization: Bearer {{adminToken}}
+
+### 6.3. ADMIN створює нового користувача (POST /admin/users)
+# @name adminCreateUser
+POST {{baseUrl}}/admin/users
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "name": "Charlie CreatedByAdmin",
+  "email": "charlie@example.com",
+  "phone": "+380507778899",
+  "password": "StrongPass123!",
+  "role": "USER",
+  "isBlocked": false
+}
+
+@charlieId = {{adminCreateUser.response.body.id}}
+
+### 6.4. ADMIN блокує користувача Bob (PATCH /admin/users/:id)
+PATCH {{baseUrl}}/admin/users/{{bobId}}
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "isBlocked": true
+}
+
+### 6.5. [НЕГАТИВНИЙ ТЕСТ 403] Заблокований Bob більше не проходить JwtAuthGuard зі своїм токеном
+GET {{baseUrl}}/auth/me
+Authorization: Bearer {{bobToken}}
+
+### 6.6. [НЕГАТИВНИЙ ТЕСТ 403] Заблокований Bob не може увійти через POST /auth/login
+POST {{baseUrl}}/auth/login
+Content-Type: application/json
+
+{
+  "email": "bob@example.com",
+  "password": "StrongPass123!"
+}
+
+### 6.7. ADMIN розблоковує Bob назад
+PATCH {{baseUrl}}/admin/users/{{bobId}}
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "isBlocked": false
+}
+
+### 6.8. ADMIN видаляє будь-яку книгу (DELETE /admin/books/:id)
+DELETE {{baseUrl}}/admin/books/{{bobBook1Id}}
+Authorization: Bearer {{adminToken}}
+
+### 6.9. ADMIN видаляє користувача Charlie (DELETE /admin/users/:id)
+DELETE {{baseUrl}}/admin/users/{{charlieId}}
+Authorization: Bearer {{adminToken}}
