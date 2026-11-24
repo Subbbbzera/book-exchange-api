@@ -4,13 +4,20 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { Book, ExchangeRequestStatus, Prisma } from '@prisma/client';
+import {
+  Book,
+  BookStatus,
+  ExchangeRequestStatus,
+  Prisma,
+} from '@prisma/client';
 import {
   PaginatedResponseDto,
   PaginationQueryDto,
 } from '../common/dto/pagination.dto';
 import { PrismaService } from '../prisma/prisma.service';
+import { BookDetailResponseDto } from './dto/book-detail-response.dto';
 import { BookResponseDto } from './dto/book-response.dto';
+import { CatalogQueryDto } from './dto/catalog-query.dto';
 import { CreateBookDto } from './dto/create-book.dto';
 import { UpdateBookDto } from './dto/update-book.dto';
 
@@ -169,5 +176,62 @@ export class BooksService {
 
       return new BookResponseDto(book);
     });
+  }
+
+  async getCatalog(
+    query: CatalogQueryDto,
+  ): Promise<PaginatedResponseDto<BookResponseDto>> {
+    const { page, limit, search, genre, condition, sortOrder } = query;
+    const skip = (page - 1) * limit;
+
+    const where: Prisma.BookWhereInput = {
+      status: BookStatus.AVAILABLE,
+      ...(genre ? { genre: { equals: genre, mode: 'insensitive' } } : {}),
+      ...(condition ? { condition } : {}),
+      ...(search
+        ? {
+            OR: [
+              { name: { contains: search, mode: 'insensitive' } },
+              { author: { contains: search, mode: 'insensitive' } },
+            ],
+          }
+        : {}),
+    };
+
+    const [books, total] = await Promise.all([
+      this.prisma.book.findMany({
+        where,
+        orderBy: [{ name: sortOrder }, { id: 'asc' }],
+        skip,
+        take: limit,
+      }),
+      this.prisma.book.count({ where }),
+    ]);
+
+    const items = books.map((book) => new BookResponseDto(book));
+    return new PaginatedResponseDto(items, total, page, limit);
+  }
+
+  async getCatalogBookById(bookId: string): Promise<BookDetailResponseDto> {
+    const book = await this.prisma.book.findFirst({
+      where: {
+        id: bookId,
+        status: BookStatus.AVAILABLE,
+      },
+      include: {
+        owner: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+      },
+    });
+
+    if (!book) {
+      throw new NotFoundException('Book not found');
+    }
+
+    return new BookDetailResponseDto(book);
   }
 }
