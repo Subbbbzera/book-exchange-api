@@ -5,6 +5,7 @@ import {
 } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { APP_INTERCEPTOR, APP_PIPE } from '@nestjs/core';
+import { AdminModule } from './admin/admin.module';
 import { AuthModule } from './auth/auth.module';
 import { BooksModule } from './books/books.module';
 import { validateEnv } from './config/env.validation';
@@ -23,6 +24,7 @@ import { UsersModule } from './users/users.module';
     UsersModule,
     BooksModule,
     ExchangeRequestsModule,
+    AdminModule,
   ],
   providers: [
     {
