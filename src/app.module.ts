@@ -8,6 +8,7 @@ import { APP_INTERCEPTOR, APP_PIPE } from '@nestjs/core';
 import { AuthModule } from './auth/auth.module';
 import { BooksModule } from './books/books.module';
 import { validateEnv } from './config/env.validation';
+import { ExchangeRequestsModule } from './exchange-requests/exchange-requests.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { UsersModule } from './users/users.module';
 
@@ -21,6 +22,7 @@ import { UsersModule } from './users/users.module';
     AuthModule,
     UsersModule,
     BooksModule,
+    ExchangeRequestsModule,
   ],
   providers: [
     {
