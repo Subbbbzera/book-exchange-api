@@ -1,0 +1,126 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  USER
+  ADMIN
+}
+
+enum BookCondition {
+  NEW
+  GOOD
+  WORN
+}
+
+enum BookStatus {
+  AVAILABLE
+  EXCHANGED
+}
+
+enum ExchangeRequestStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+  CANCELLED
+}
+
+model User {
+  id        String   @id @default(uuid())
+  name      String
+  email     String   @unique
+  phone     String
+  password  String
+  avatar    String?
+  role      Role     @default(USER)
+  isBlocked Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  books              Book[]
+  sentRequests       ExchangeRequest[] @relation("RequestSender")
+  receivedRequests   ExchangeRequest[] @relation("RequestOwner")
+  initiatedExchanges ExchangeHistory[] @relation("ExchangeSender")
+  ownedExchanges     ExchangeHistory[] @relation("ExchangeOwner")
+}
+
+model Book {
+  id        String        @id @default(uuid())
+  name      String
+  author    String
+  genre     String
+  condition BookCondition
+  photo     String
+  status    BookStatus    @default(AVAILABLE)
+  ownerId   String
+  owner     User          @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+
+  requestedIn          ExchangeRequest[]     @relation("RequestedBook")
+  selectedInRequests   ExchangeRequest[]     @relation("SelectedOfferedBook")
+  offeredIn            ExchangeRequestBook[]
+  exchangedAsRequested ExchangeHistory[]     @relation("HistoryRequestedBook")
+  exchangedAsOffered   ExchangeHistory[]     @relation("HistoryOfferedBook")
+
+  @@index([ownerId])
+  @@index([status, genre, condition])
+  @@index([name])
+  @@index([author])
+}
+
+model ExchangeRequest {
+  id                    String                @id @default(uuid())
+  message               String
+  status                ExchangeRequestStatus @default(PENDING)
+  senderId              String
+  sender                User                  @relation("RequestSender", fields: [senderId], references: [id], onDelete: Cascade)
+  ownerId               String
+  owner                 User                  @relation("RequestOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  requestedBookId       String
+  requestedBook         Book                  @relation("RequestedBook", fields: [requestedBookId], references: [id], onDelete: Cascade)
+  selectedOfferedBookId String?
+  selectedOfferedBook   Book?                 @relation("SelectedOfferedBook", fields: [selectedOfferedBookId], references: [id], onDelete: SetNull)
+  createdAt             DateTime              @default(now())
+  updatedAt             DateTime              @updatedAt
+
+  offeredBooks ExchangeRequestBook[]
+  history      ExchangeHistory?
+
+  @@index([senderId, status])
+  @@index([ownerId, status])
+  @@index([requestedBookId, status])
+}
+
+model ExchangeRequestBook {
+  exchangeRequestId String
+  exchangeRequest   ExchangeRequest @relation(fields: [exchangeRequestId], references: [id], onDelete: Cascade)
+  bookId            String
+  book              Book            @relation(fields: [bookId], references: [id], onDelete: Cascade)
+
+  @@id([exchangeRequestId, bookId])
+  @@index([bookId])
+}
+
+model ExchangeHistory {
+  id                String          @id @default(uuid())
+  exchangeRequestId String          @unique
+  exchangeRequest   ExchangeRequest @relation(fields: [exchangeRequestId], references: [id], onDelete: Cascade)
+  requestedBookId   String
+  requestedBook     Book            @relation("HistoryRequestedBook", fields: [requestedBookId], references: [id], onDelete: Restrict)
+  offeredBookId     String
+  offeredBook       Book            @relation("HistoryOfferedBook", fields: [offeredBookId], references: [id], onDelete: Restrict)
+  senderId          String
+  sender            User            @relation("ExchangeSender", fields: [senderId], references: [id], onDelete: Cascade)
+  ownerId           String
+  owner             User            @relation("ExchangeOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  exchangedAt       DateTime        @default(now())
+
+  @@index([senderId])
+  @@index([ownerId])
+}
