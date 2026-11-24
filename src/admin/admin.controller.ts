@@ -22,10 +22,12 @@ import {
 } from '@nestjs/swagger';
 import { Role } from '@prisma/client';
 import { BookResponseDto } from '../books/dto/book-response.dto';
+import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { Roles } from '../common/decorators/roles.decorator';
 import { PaginatedResponseDto } from '../common/dto/pagination.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
+import { AuthenticatedUser } from '../common/interfaces/authenticated-user.interface';
 import { UserResponseDto } from '../users/dto/user-response.dto';
 import { AdminService } from './admin.service';
 import { AdminCreateUserDto } from './dto/admin-create-user.dto';
@@ -70,10 +72,11 @@ export class AdminController {
   @ApiConflictResponse({ description: 'Email already exists' })
   @ApiForbiddenResponse({ description: 'Requires ADMIN role' })
   async updateUser(
+    @CurrentUser() admin: AuthenticatedUser,
     @Param('id', ParseUUIDPipe) userId: string,
     @Body() dto: AdminUpdateUserDto,
   ): Promise<UserResponseDto> {
-    return this.adminService.updateUser(userId, dto);
+    return this.adminService.updateUser(admin.id, userId, dto);
   }
 
   @Delete('users/:id')
@@ -82,9 +85,10 @@ export class AdminController {
   @ApiNotFoundResponse({ description: 'User not found' })
   @ApiForbiddenResponse({ description: 'Requires ADMIN role' })
   async deleteUser(
+    @CurrentUser() admin: AuthenticatedUser,
     @Param('id', ParseUUIDPipe) userId: string,
   ): Promise<UserResponseDto> {
-    return this.adminService.deleteUser(userId);
+    return this.adminService.deleteUser(admin.id, userId);
   }
 
   @Delete('books/:id')

@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ConflictException,
   Injectable,
   NotFoundException,
@@ -74,9 +75,19 @@ export class AdminService {
   }
 
   async updateUser(
+    adminId: string,
     userId: string,
     dto: AdminUpdateUserDto,
   ): Promise<UserResponseDto> {
+    if (adminId === userId) {
+      if (dto.isBlocked === true) {
+        throw new BadRequestException('Admin cannot block their own account');
+      }
+      if (dto.role && dto.role !== Role.ADMIN) {
+        throw new BadRequestException('Admin cannot demote their own role');
+      }
+    }
+
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
     });
@@ -115,7 +126,11 @@ export class AdminService {
     return new UserResponseDto(updated);
   }
 
-  async deleteUser(userId: string): Promise<UserResponseDto> {
+  async deleteUser(adminId: string, userId: string): Promise<UserResponseDto> {
+    if (adminId === userId) {
+      throw new BadRequestException('Admin cannot delete their own account');
+    }
+
     return this.prisma.$transaction(async (tx) => {
       const user = await tx.user.findUnique({
         where: { id: userId },

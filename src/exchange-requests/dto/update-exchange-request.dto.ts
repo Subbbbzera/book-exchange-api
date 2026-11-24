@@ -1,6 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { ExchangeRequestStatus } from '@prisma/client';
-import { IsIn, IsOptional, IsUUID, ValidateIf } from 'class-validator';
+import { IsIn, IsNotEmpty, IsUUID, ValidateIf } from 'class-validator';
 
 export class UpdateExchangeRequestDto {
   @ApiProperty({
@@ -32,7 +32,7 @@ export class UpdateExchangeRequestDto {
     (o: UpdateExchangeRequestDto) =>
       o.status === ExchangeRequestStatus.ACCEPTED,
   )
+  @IsNotEmpty()
   @IsUUID('4')
-  @IsOptional()
   selectedOfferedBookId?: string;
 }

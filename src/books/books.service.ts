@@ -119,7 +119,13 @@ export class BooksService {
     bookId: string,
     dto: UpdateBookDto,
   ): Promise<BookResponseDto> {
-    await this.findOwnedBookOrThrow(bookId, userId);
+    const book = await this.findOwnedBookOrThrow(bookId, userId);
+
+    if (book.status !== BookStatus.AVAILABLE) {
+      throw new ConflictException(
+        'Cannot edit a book that has already been exchanged',
+      );
+    }
 
     const updated = await this.prisma.book.update({
       where: { id: bookId },

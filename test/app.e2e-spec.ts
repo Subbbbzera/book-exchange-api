@@ -11,15 +11,6 @@ import * as request from 'supertest';
 import { AppModule } from '../src/app.module';
 import { PrismaService } from '../src/prisma/prisma.service';
 
-// Point tests to the dedicated test PostgreSQL container (port 5434) unless already overridden in CI
-if (
-  !process.env.TEST_DATABASE_URL &&
-  process.env.DATABASE_URL?.includes('5435')
-) {
-  process.env.DATABASE_URL =
-    'postgresql://postgres:postgrespassword@localhost:5434/book_exchange_test?schema=public';
-}
-
 describe('Book Exchange API (e2e)', () => {
   let app: INestApplication;
   let prisma: PrismaService;
